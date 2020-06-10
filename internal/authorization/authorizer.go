@@ -43,14 +43,14 @@ type Object struct {
 }
 
 // selectMatchingSubjectRules take a set of rules and select only the rules matching the subject constraints.
-func selectMatchingSubjectRules(rules []schema.ACLRule, subject Subject) []schema.ACLRule {
+func selectMatchingSubjectRules(rules []schema.ACLRule, subject Subject, domain string) []schema.ACLRule {
 	selectedRules := []schema.ACLRule{}
 
 	for _, rule := range rules {
 		switch {
 		case len(rule.Subjects) > 0:
 			for _, subjectRule := range rule.Subjects {
-				if isSubjectMatching(subject, subjectRule) && isIPMatching(subject.IP, rule.Networks) {
+				if isSubjectMatching(subject, subjectRule, domain, rule.Domains) && isIPMatching(subject.IP, rule.Networks) {
 					selectedRules = append(selectedRules, rule)
 				}
 			}
@@ -77,8 +77,8 @@ func selectMatchingObjectRules(rules []schema.ACLRule, object Object) []schema.A
 }
 
 func selectMatchingRules(rules []schema.ACLRule, subject Subject, object Object) []schema.ACLRule {
-	matchingRules := selectMatchingSubjectRules(rules, subject)
-	return selectMatchingObjectRules(matchingRules, object)
+	matchingRules := selectMatchingObjectRules(rules, object)
+	return selectMatchingSubjectRules(matchingRules, subject, object.Domain)
 }
 
 // PolicyToLevel converts a string policy to int authorization level.
@@ -137,6 +137,12 @@ func (p *Authorizer) GetRequiredLevel(subject Subject, requestURL url.URL) Level
 func (p *Authorizer) IsURLMatchingRuleWithGroupSubjects(requestURL url.URL) (hasGroupSubjects bool) {
 	for _, rule := range p.configuration.Rules {
 		if isDomainMatching(requestURL.Hostname(), rule.Domains) && isPathMatching(requestURL.Path, rule.Resources) {
+			for _, domainRule := range rule.Domains {
+				if strings.HasPrefix(domainRule, "@.") {
+					return true
+				}
+			}
+
 			for _, subjectRule := range rule.Subjects {
 				if strings.HasPrefix(subjectRule, groupPrefix) {
 					return true
